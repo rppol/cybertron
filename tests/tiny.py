@@ -73,19 +73,19 @@ class Custom(nn.Module):
 
 
 def _config(arch, vocab, **overrides):
-    labels = dict(id2label=dict(enumerate(LABELS)), label2id={n: i for i, n in enumerate(LABELS)})
+    kw = dict(vocab_size=vocab, id2label=dict(enumerate(LABELS)), label2id={n: i for i, n in enumerate(LABELS)})
     if arch == "distilbert":
-        kw = dict(dim=32, n_layers=2, n_heads=2, hidden_dim=64, max_position_embeddings=128)
-        return DistilBertConfig(vocab_size=vocab, **kw, **labels, **overrides)
+        kw.update(dim=32, n_layers=2, n_heads=2, hidden_dim=64, max_position_embeddings=128)
+        return DistilBertConfig(**{**kw, **overrides})
     if arch == "roberta":
-        kw = dict(hidden_size=32, num_hidden_layers=2, num_attention_heads=2, intermediate_size=64)
+        kw.update(hidden_size=32, num_hidden_layers=2, num_attention_heads=2, intermediate_size=64)
         kw.update(max_position_embeddings=130, type_vocab_size=1, pad_token_id=1, bos_token_id=0, eos_token_id=2)
-        return RobertaConfig(vocab_size=vocab, **{**kw, **labels, **overrides})
+        return RobertaConfig(**{**kw, **overrides})
     if arch == "minilm":
-        kw = dict(hidden_size=384, num_hidden_layers=6, num_attention_heads=12, intermediate_size=1536)
+        kw.update(hidden_size=384, num_hidden_layers=6, num_attention_heads=12, intermediate_size=1536)
     else:
-        kw = dict(hidden_size=32, num_hidden_layers=2, num_attention_heads=2, intermediate_size=64)
-    return BertConfig(vocab_size=vocab, max_position_embeddings=128, **{**kw, **labels, **overrides})
+        kw.update(hidden_size=32, num_hidden_layers=2, num_attention_heads=2, intermediate_size=64)
+    return BertConfig(**{"max_position_embeddings": 128, **kw, **overrides})
 
 
 def _tokenizer(arch, out, model_max_length):
