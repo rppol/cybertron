@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -61,3 +63,8 @@ def test_ov_config_rejects_owned_keys(key):
 )
 def test_top_bucket_is_max_len(max_len, buckets, want):
     assert Settings(model="/m", max_len=max_len, buckets=buckets).buckets == want
+
+
+def test_every_knob_documented():
+    doc = (Path(__file__).parent.parent / "docs" / "tuning.md").read_text()
+    assert [f for f in Settings.model_fields if f"CYBERTRON_{f.upper()}" not in doc] == []

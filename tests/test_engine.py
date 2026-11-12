@@ -35,7 +35,7 @@ def test_precision_matches_torch(tmp_path, precision, tol):
     for i, w in enumerate(want):
         np.testing.assert_allclose(got[i], w.numpy(), rtol=tol, atol=tol)
     assert info["precision"] == precision
-    if precision == "FP32":
+    if precision != "FP16":
         assert info["inference_precision"] == "f32"
 
 

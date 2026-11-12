@@ -143,7 +143,8 @@ def compile(model, cfg):
 
 
 def properties(cfg, supported):
-    defaults = {"INFERENCE_PRECISION_HINT": "f32"} if cfg.precision == "FP32" else {}
+    # INT8 weights with f16 execution gave NaN logits under concurrent load on arm64 (OpenVINO 2025.4.1).
+    defaults = {"INFERENCE_PRECISION_HINT": "f32"} if cfg.precision != "FP16" else {}
     for key in defaults.keys() - supported:
         log.warning("CPU plugin does not support %s, leaving it unset", key)
     typed = {
