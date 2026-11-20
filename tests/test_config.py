@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from cybertron.config import Settings
+from cybertron.core.config import Settings
 
 
 def test_env_overrides(monkeypatch):
@@ -25,12 +25,14 @@ def test_defaults():
     assert (cfg.precision, cfg.hint, cfg.slots, cfg.batch_size, cfg.max_len) == ("FP32", "THROUGHPUT", 0, 32, 128)
     assert cfg.buckets == [16, 32, 64, 128]
     assert cfg.api_key is None
+    assert cfg.log_level == "INFO"
 
 
 @pytest.mark.parametrize(
     "bad",
     [
         {"precision": "INT4"},
+        {"log_level": "info"},
         {"hint": "FAST"},
         {"batch_size": 0},
         {"buckets": [0, 16]},

@@ -6,8 +6,8 @@ from safetensors.torch import save_file
 from tiny import LABELS, build
 from transformers import GPT2Config
 
-from cybertron.config import Settings
-from cybertron.model import load
+from cybertron.core.config import Settings
+from cybertron.services.model import load
 
 TEXTS = ["hello world", "the card number is 1234 5678", "a"]
 

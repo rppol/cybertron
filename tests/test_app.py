@@ -1,4 +1,5 @@
 import gc
+import logging
 import queue
 import threading
 from types import SimpleNamespace
@@ -8,8 +9,9 @@ import pytest
 from fastapi.testclient import TestClient
 from tiny import build
 
-from cybertron.app import admit, create_app
-from cybertron.config import Settings
+from cybertron.core.concurrency import admit
+from cybertron.core.config import Settings
+from cybertron.main import create_app
 
 
 @pytest.fixture(scope="module")
@@ -36,6 +38,7 @@ def drain(app):
 def test_routes(model):
     with client(model) as c:
         assert c.get("/health").json()["info"]["tasks"] == ["classify", "embed"]
+        assert c.get("/health").json()["info"] == c.app.state.engine.info
         assert c.get("/health/deep").json()["seconds"] > 0
         r = c.post("/v1/classify", json={"texts": ["hello", "bad"], "top_k": 2}).json()["results"]
         assert len(r) == 2 and len(r[0]) == 2 and {"label", "score"} <= r[0][0].keys()
@@ -166,3 +169,29 @@ def test_two_lifespans(model):
             assert c.post("/v1/classify", json={"texts": ["a"]}).status_code == 200
             engine = c.app.state.engine
         assert engine.compiled is None and engine.pool.qsize() == 0
+
+
+def test_json_routes_declare_response_models():
+    paths = create_app(Settings(model="/m")).openapi()["paths"]
+    for path in ["/v1/classify", "/v1/embed", "/health", "/health/deep"]:
+        (op,) = paths[path].values()
+        assert "$ref" in op["responses"]["200"]["content"]["application/json"]["schema"]
+    assert "text/plain" in paths["/metrics"]["get"]["responses"]["200"]["content"]
+
+
+def test_request_log(model, caplog):
+    with caplog.at_level(logging.DEBUG, logger="cybertron"), client(model, log_level="DEBUG") as c:
+        c.get("/health")
+        c.get("/no/such/path")
+    assert "engine ready" in caplog.text
+    assert "GET /health 200" in caplog.text and "GET other 404" in caplog.text
+    assert "/no/such/path" not in caplog.text
+    assert len(logging.getLogger("cybertron").handlers) == 1
+
+
+def test_gc_thresholds_restored(model):
+    before = gc.get_threshold()
+    with client(model):
+        assert gc.get_threshold() == (50_000, 20, 20)
+    assert gc.get_threshold() == before
+

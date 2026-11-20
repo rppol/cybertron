@@ -41,7 +41,7 @@ def main():
     port = _free_port()
     start = time.perf_counter()
     server = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "cybertron.app:create_app", "--factory", "--port", str(port), "--log-level", "warning"],
+        [sys.executable, "-m", "uvicorn", "cybertron.main:create_app", "--factory", "--port", str(port), "--log-level", "warning"],
         stdout=sys.stderr,
     )
     try:
