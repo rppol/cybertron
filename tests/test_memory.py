@@ -6,8 +6,8 @@ import psutil
 import pytest
 from tiny import WORDS, build
 
-from cybertron.config import Settings
-from cybertron.engine import Engine
+from cybertron.core.config import Settings
+from cybertron.services.engine import Engine
 
 pytestmark = pytest.mark.slow
 

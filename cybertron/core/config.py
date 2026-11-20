@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     gc_interval: float = Field(300.0, ge=0)
     gc_thresholds: tuple[int, int, int] = (50_000, 20, 20)
 
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
     @field_validator("ov_config")
     @classmethod
     def _free_keys(cls, v):

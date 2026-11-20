@@ -1,8 +1,54 @@
 # cybertron
 
+![A server CPU chip with streams of text flowing in and sorted into trays](docs/images/banner.jpg)
+
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
+![FastAPI 0.115+](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)
+![OpenVINO 2025.4.1](https://img.shields.io/badge/OpenVINO-2025.4.1-0071C5?logo=intel&logoColor=white)
+![NNCF 3.1.0](https://img.shields.io/badge/NNCF-3.1.0-0071C5)
+![PyTorch 2.8.0](https://img.shields.io/badge/PyTorch-2.8.0-EE4C2C?logo=pytorch&logoColor=white)
+![Transformers 4.46.3](https://img.shields.io/badge/Transformers-4.46.3-FFD21E?logo=huggingface&logoColor=black)
+
 cybertron serves a local Hugging Face encoder checkpoint on CPU through OpenVINO. It has two inference routes, `/v1/classify` and `/v1/embed`. The tests cover BERT, DistilBERT, RoBERTa, and MiniLM-sized BERT checkpoints.
 
 At startup the service converts the PyTorch model to OpenVINO, stores the weights as FP32, FP16, or INT8, and compiles the model for the CPU. A fixed pool of OpenVINO infer requests serves the traffic. When every request in the pool is busy, the service answers `429` at once. It does not queue the request.
+
+## How it works
+
+Startup runs once. If a step fails, the service does not start.
+
+```mermaid
+flowchart LR
+    A["Model folder<br/>safetensors, .bin or .pt"] --> B["PyTorch model<br/>shape read from the weights"]
+    B --> C["OpenVINO graph<br/>ov.convert_model"]
+    C --> D["Precision pass<br/>FP16 or NNCF INT8"]
+    D --> E["Compile for the CPU<br/>optional cache dir"]
+    E --> F["Pool of infer requests"]
+```
+
+Each inference request takes one infer request from the pool, or gets `429` at once:
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant T as Timing middleware
+    participant R as /v1/classify
+    participant P as Infer request pool
+    participant W as Worker thread
+    C->>T: POST /v1/classify
+    T->>R: API key, rate limit, size checks
+    R->>P: take a free request
+    alt pool is empty
+        R-->>C: 429, Retry-After: 1
+    else request free
+        R->>W: run in a thread
+        W->>W: pre hook, tokenize, pad to bucket, infer, post hook, softmax
+        W-->>R: scores
+        R->>P: put the request back
+        R-->>C: 200 with results
+    end
+    T->>T: request count, latency, debug log line
+```
 
 ## Quickstart
 
@@ -12,7 +58,7 @@ You need [uv](https://docs.astral.sh/uv/) and Python 3.10 or later.
 uv sync
 uv run huggingface-cli download distilbert/distilbert-base-uncased-finetuned-sst-2-english \
     --include "*.json" "*.txt" "model.safetensors" --local-dir models/sst2
-CYBERTRON_MODEL=models/sst2 uv run uvicorn cybertron.app:create_app --factory --port 8000
+CYBERTRON_MODEL=models/sst2 uv run uvicorn cybertron.main:create_app --factory --port 8000
 ```
 
 Run one uvicorn worker per container. Each worker loads its own copy of the model and its own request pool.
@@ -110,12 +156,12 @@ def pre(texts: list[str], meta: list[dict] | None) -> list[str]: ...
 def post(logits: numpy.ndarray, meta: list[dict] | None, labels: list[str]) -> numpy.ndarray: ...
 ```
 
-`pre` runs before tokenizing, on both routes, and must return one string per text. `post` runs on the classify logits, before softmax or sigmoid. To remove a label from a row, set its logit to `-inf`. After `post`, the request fails if a logit is NaN or `+inf`, or if a row has no finite logit.
+The defaults in `cybertron/services/preprocessing.py` and `cybertron/services/postprocessing.py` pass the input through unchanged. `pre` runs before tokenizing, on both routes, and must return one string per text. `post` runs on the classify logits, before softmax or sigmoid. To remove a label from a row, set its logit to `-inf`. After `post`, the request fails if a logit is NaN or `+inf`, or if a row has no finite logit.
 
 `examples/hooks.py` masks runs of six or more digits and removes the labels that a row lists in `meta[i]["deny"]`:
 
 ```sh
-CYBERTRON_HOOKS=examples.hooks CYBERTRON_MODEL=models/sst2 uv run uvicorn cybertron.app:create_app --factory
+CYBERTRON_HOOKS=examples.hooks CYBERTRON_MODEL=models/sst2 uv run uvicorn cybertron.main:create_app --factory
 ```
 
 Hooks run in the service process with its permissions.
@@ -135,6 +181,33 @@ The rate limit uses the socket peer address. The service does not read `X-Forwar
 
 Texts longer than the model limit are cut at `max_len` tokens. The service does not split them.
 
+## Layout
+
+```text
+cybertron/
+  main.py                  app factory, lifespan, routers
+  core/
+    config.py              settings from CYBERTRON_ environment variables
+    logging_setup.py       the cybertron logger
+    middlewares.py         request timing, metrics, and request log
+    security.py            API key and rate limit
+    concurrency.py         admission to the infer request pool
+    memory_utils.py        GC freeze, thresholds, and periodic collection
+  schemas/
+    requests.py            request bodies
+    responses.py           response bodies
+  routes/
+    inference.py           /v1/classify, /v1/embed
+    health.py              /health, /health/deep
+    metrics.py             /metrics
+  services/
+    model.py               load the checkpoint and read its shape
+    convert.py             convert to OpenVINO, set precision, compile
+    engine.py              tokenize, batch, infer
+    preprocessing.py       default pre hook and its checks
+    postprocessing.py      default post hook, checks, softmax, and top-k
+```
+
 ## Settings
 
-All settings are environment variables with the `CYBERTRON_` prefix. See [docs/tuning.md](docs/tuning.md) for each setting, its effect, and measured numbers.
+All settings are environment variables with the `CYBERTRON_` prefix. See [docs/tuning.md](docs/tuning.md) for each setting, its effect, and measured numbers. `CYBERTRON_LOG_LEVEL` sets the log level, `INFO` by default.

@@ -189,3 +189,7 @@ Seconds between calls to `gc.collect()` and, on glibc, `malloc_trim(0)`. Default
 ### `CYBERTRON_GC_THRESHOLDS`
 
 The Python GC thresholds set after startup, as `[gen0, gen1, gen2]`. Default `[50000, 20, 20]`. At startup the service also freezes the objects that exist (the tokenizer and the compiled model), so the collector does not scan them again. Higher thresholds mean fewer collections on the request path. Not measured on the bench machine.
+
+### `CYBERTRON_LOG_LEVEL`
+
+`DEBUG`, `INFO` (default), `WARNING`, `ERROR`, or `CRITICAL`, in upper case. Sets the level of the `cybertron` logger, which writes to stderr. `INFO` prints the resolved engine settings once at startup. `DEBUG` adds one line per request with the method, route, status code, and time. Unknown paths log as `other`. uvicorn keeps the level from its own `--log-level`. If a `--log-config` adds a handler to the root logger, each line prints twice.

@@ -1,14 +1,17 @@
 import logging
+import sys
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 import torch
 from tiny import build
 
-from cybertron.config import Settings
-from cybertron.engine import Engine, compile, convert, properties
-from cybertron.model import load
+from cybertron.core.config import Settings
+from cybertron.services.convert import compile, convert, properties
+from cybertron.services.engine import Engine
+from cybertron.services.model import load
 
 TEXTS = ["hello world", "the card number is 1234 5678 9012", "a"]
 
@@ -262,3 +265,15 @@ def test_headless_has_no_classify(tmp_path):
     assert e.info["tasks"] == ["embed"]
     with pytest.raises(ValueError, match="head"):
         e.classify(None, ["a"])
+
+
+@pytest.mark.parametrize("hooks", [SimpleNamespace(pre=lambda texts, meta: [t.upper() for t in texts]), SimpleNamespace(post=lambda logits, meta, labels: logits)])
+def test_one_sided_hooks(tmp_path, monkeypatch, hooks):
+    build(tmp_path, "bert")
+    monkeypatch.setitem(sys.modules, "one_sided", hooks)
+    e = Engine(Settings(model=tmp_path, hooks="one_sided", slots=1))
+    req = take(e)
+    assert len(e.classify(req, ["hello", "world"], top_k=2)) == 2
+    e.pool.put(req)
+    e.close()
+
